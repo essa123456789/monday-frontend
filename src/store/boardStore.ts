@@ -152,7 +152,7 @@ interface BoardState {
   openTask: (taskId: number) => Promise<void>;
   closeTask: () => void;
 
-  addComment: (text: string, mentionIds?: number[]) => Promise<void>;
+  addComment: (text: string, mentionIds?: number[], image?: File | null) => Promise<void>;
   deleteComment: (id: number) => Promise<void>;
   addChecklistItem: (text: string) => Promise<void>;
   toggleChecklistItem: (id: number, done: boolean) => Promise<void>;
@@ -1089,17 +1089,28 @@ export const useBoardStore = create<BoardState>((set, get) => ({
 
   closeTask: () => set({ activeTask: null, activeTaskLoading: false }),
 
-  addComment: async (text, mentionIds) => {
+  addComment: async (text, mentionIds, image) => {
     const task = get().activeTask;
     if (!task) return;
     try {
-      const comment = await api.post<Comment>("/comments/", {
-        task: task.id,
-        text,
-        // Send the explicit ids the user picked from the @-menu; the server only
-        // falls back to ambiguous fuzzy @name matching when this is absent.
-        ...(mentionIds && mentionIds.length ? { mention_ids: mentionIds } : {}),
-      });
+      let comment: Comment;
+      if (image) {
+        // Multipart when an image is attached; the server reads it from FILES.
+        const form = new FormData();
+        form.append("task", String(task.id));
+        form.append("text", text);
+        (mentionIds ?? []).forEach((id) => form.append("mention_ids", String(id)));
+        form.append("image", image);
+        comment = await api.postForm<Comment>("/comments/", form);
+      } else {
+        comment = await api.post<Comment>("/comments/", {
+          task: task.id,
+          text,
+          // Send the explicit ids the user picked from the @-menu; the server only
+          // falls back to ambiguous fuzzy @name matching when this is absent.
+          ...(mentionIds && mentionIds.length ? { mention_ids: mentionIds } : {}),
+        });
+      }
       set({ activeTask: { ...task, comments: [comment, ...task.comments] } });
       const card = findCard(get().board, task.id);
       if (card && get().board)

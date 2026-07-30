@@ -160,6 +160,8 @@ export interface Comment {
   author: number;
   author_detail: Member;
   text: string;
+  /** Absolute URL of an image dropped/pasted into the update, or null. */
+  image?: string | null;
   created_at: string;
 }
 

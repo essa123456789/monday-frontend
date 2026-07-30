@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, CircleAlert, TriangleAlert } from "lucide-react";
+import { ChevronDown, ChevronRight, CircleAlert, Palmtree, TriangleAlert } from "lucide-react";
+import { api } from "@/lib/api";
 import { useBoardStore } from "@/store/boardStore";
 import { countryFlag, countryLabel, timezoneLocalTime } from "@/lib/locations";
 import { MemberTasksPanel } from "@/components/overview/MemberTasksPanel";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
-import type { Member } from "@/lib/types";
+import type { LeaveRequest, Member } from "@/lib/types";
 
 /** Open-task tally per member, keyed by member id. From /tasks/workload/. */
 export type Workload = Record<number, { todo: number; working: number; done: number; total: number }>;
@@ -18,6 +19,8 @@ const COLLAPSED_COUNT = 5;
 /** Figma palette (node 130:9107, light) */
 const RED = "#F03650";
 const ORANGE = "#FDA633";
+/** Teal — the "on holiday" accent, matching the leave/calendar palette. */
+const HOLIDAY = "#14B8A6";
 
 /** Ticking wall-clock for one teammate's zone; blank until a zone is set. */
 function useNow(intervalMs = 30_000) {
@@ -56,11 +59,14 @@ function TeamCard({
   member,
   load,
   tone,
+  holiday,
   onOpen,
 }: {
   member: Member;
   load: Workload[number] | undefined;
   tone: WorkloadTone | null;
+  /** True when the member is on approved leave today. */
+  holiday: boolean;
   onOpen: () => void;
 }) {
   const time = member.timezone ? timezoneLocalTime(member.timezone) : "";
@@ -73,8 +79,13 @@ function TeamCard({
     <button
       type="button"
       onClick={onOpen}
-      title={`See ${member.name}'s tasks${place ? ` · ${place}` : ""}`}
-      className="relative flex min-w-0 cursor-pointer items-center gap-[17px] rounded-[16px] border-[1.5px] border-[#EDEEF2] bg-white px-[19px] py-[20px] text-left transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:border-edge dark:bg-surface-raised"
+      title={`See ${member.name}'s tasks${holiday ? " · On holiday" : ""}${place ? ` · ${place}` : ""}`}
+      className={cn(
+        "relative flex min-w-0 cursor-pointer items-center gap-[17px] rounded-[16px] border-[1.5px] px-[19px] py-[20px] text-left transition-all duration-150 hover:-translate-y-0.5 hover:shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+        holiday
+          ? "border-[#14B8A6]/40 bg-[#14B8A6]/[0.06] hover:border-[#14B8A6] dark:bg-[#14B8A6]/[0.08]"
+          : "border-[#EDEEF2] bg-white hover:border-primary/50 dark:border-edge dark:bg-surface-raised"
+      )}
     >
       {/* Local time + flag — top-right corner */}
       {(time || flag) && (
@@ -105,28 +116,46 @@ function TeamCard({
             {member.initials}
           </span>
         )}
-        <span className="absolute bottom-[4px] right-[4px] h-[10px] w-[10px] rounded-full border-2 border-white bg-[#01AD64] dark:border-surface-raised" />
-        {tone && (
-          <span className="absolute -left-px -top-px" style={{ color: tone.color }}>
-            <tone.icon size={14} strokeWidth={2.4} />
+        <span
+          className="absolute bottom-[4px] right-[4px] h-[10px] w-[10px] rounded-full border-2 border-white dark:border-surface-raised"
+          style={{ backgroundColor: holiday ? HOLIDAY : "#01AD64" }}
+        />
+        {holiday ? (
+          <span className="absolute -left-px -top-px" style={{ color: HOLIDAY }}>
+            <Palmtree size={15} strokeWidth={2.4} />
           </span>
+        ) : (
+          tone && (
+            <span className="absolute -left-px -top-px" style={{ color: tone.color }}>
+              <tone.icon size={14} strokeWidth={2.4} />
+            </span>
+          )
         )}
       </span>
 
-      {/* Name + workload counts */}
+      {/* Name + workload counts (or holiday state) */}
       <span className="flex min-w-0 flex-1 flex-col gap-[8px]">
         <span className="truncate text-[16px] font-bold leading-none text-[#262D39] dark:text-ink">
           {member.name}
         </span>
-        <span
-          className={cn(
-            "truncate text-[11px] font-medium leading-none",
-            !tone && "text-[rgba(38,45,57,0.7)] dark:text-ink-muted"
-          )}
-          style={tone ? { color: tone.color } : undefined}
-        >
-          {todo} To Do - {working} In Progress
-        </span>
+        {holiday ? (
+          <span
+            className="flex items-center gap-1 truncate text-[11px] font-semibold leading-none"
+            style={{ color: HOLIDAY }}
+          >
+            <Palmtree size={12} strokeWidth={2.4} /> On holiday
+          </span>
+        ) : (
+          <span
+            className={cn(
+              "truncate text-[11px] font-medium leading-none",
+              !tone && "text-[rgba(38,45,57,0.7)] dark:text-ink-muted"
+            )}
+            style={tone ? { color: tone.color } : undefined}
+          >
+            {todo} To Do - {working} In Progress
+          </span>
+        )}
       </span>
     </button>
   );
@@ -184,7 +213,32 @@ export function TeamStrip({ workload }: { workload: Workload }) {
   // tile, and the viewer opts into the full team via "View all".
   const [expanded, setExpanded] = useState(false);
   const [filter, setFilter] = useState<TeamFilter>("all");
+  // Member ids on approved leave today — approved leaves are visible to everyone.
+  const [onLeave, setOnLeave] = useState<Set<number>>(new Set());
   useNow();
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<LeaveRequest[]>("/leaves/")
+      .then((leaves) => {
+        if (cancelled) return;
+        const today = new Date().toISOString().slice(0, 10);
+        setOnLeave(
+          new Set(
+            leaves
+              .filter((l) => l.status === "approved" && l.start_date <= today && l.end_date >= today)
+              .map((l) => l.member)
+          )
+        );
+      })
+      .catch(() => {
+        /* holiday badge is a hint; a failed fetch just leaves it off */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (members.length === 0) return null;
 
@@ -195,21 +249,21 @@ export function TeamStrip({ workload }: { workload: Workload }) {
   const redCount = members.filter((m) => tones.get(m.id)?.color === RED).length;
   const orangeCount = members.filter((m) => tones.get(m.id)?.color === ORANGE).length;
 
-  // Admins see who needs work first: red (nothing to do), then orange (almost
-  // out), then everyone else — so the collapsed row surfaces the urgent cards.
-  // Members have no tones at all, so their order stays as the directory gives it.
+  // Members on holiday always sink to the end. Among the rest, admins see who
+  // needs work first: red (nothing to do), then orange (almost out), then
+  // everyone else; non-admins keep the directory order.
   const rank = (m: Member) => {
+    if (onLeave.has(m.id)) return 3;
+    if (!viewerIsAdmin) return 2;
     const color = tones.get(m.id)?.color;
     if (color === RED) return 0;
     if (color === ORANGE) return 1;
     return 2;
   };
-  const ordered = viewerIsAdmin
-    ? members
-        .map((m, i) => ({ m, i }))
-        .sort((a, b) => rank(a.m) - rank(b.m) || a.i - b.i)
-        .map((x) => x.m)
-    : members;
+  const ordered = members
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => rank(a.m) - rank(b.m) || a.i - b.i)
+    .map((x) => x.m);
 
   const filtered =
     filter === "all"
@@ -289,6 +343,7 @@ export function TeamStrip({ workload }: { workload: Workload }) {
               member={m}
               load={workload[m.id]}
               tone={tones.get(m.id) ?? null}
+              holiday={onLeave.has(m.id)}
               onOpen={() => setActive(m)}
             />
           ))}

@@ -12,6 +12,7 @@ import { InviteButton } from "@/components/layout/InviteButton";
 import { NotificationsBell } from "@/components/layout/NotificationsBell";
 import { RealtimeClient } from "@/components/layout/RealtimeClient";
 import { OverviewView } from "@/components/overview/OverviewView";
+import { CelebrationOverlay } from "@/components/overview/celebration/CelebrationOverlay";
 import { TaskPanel } from "@/components/task/TaskPanel";
 import { Avatar } from "@/components/ui/Avatar";
 import { Dropdown, DropdownItem } from "@/components/ui/Dropdown";
@@ -110,6 +111,7 @@ export default function OverviewPage() {
       </div>
       <TaskPanel />
       <BottomTabBar />
+      <CelebrationOverlay />
     </div>
   );
 }

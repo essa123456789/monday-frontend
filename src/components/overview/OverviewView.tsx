@@ -188,6 +188,24 @@ export function OverviewView() {
     };
   }, [activeTask]);
 
+  // Kiosk / always-on safety net. Live updates ride a WebSocket, which can be
+  // silently dropped on a long-running display (proxy idle timeouts, throttled
+  // tabs) with no close event — leaving the page frozen on its first load. Poll
+  // a silent refresh so the Overview stays current no matter the socket's state.
+  useEffect(() => {
+    const REFRESH_MS = 5_000;
+    const id = setInterval(() => {
+      // Don't fight an open task panel; the close handler above refreshes anyway.
+      if (useBoardStore.getState().activeTask) return;
+      load(true);
+      api
+        .get<Workload>("/tasks/workload/")
+        .then(setWorkload)
+        .catch(() => {});
+    }, REFRESH_MS);
+    return () => clearInterval(id);
+  }, [load]);
+
   const anchorDate = parseISO(anchor);
   const week = getISOWeek(anchorDate);
   const rangeLabel = `${format(startOfISOWeek(anchorDate), "MMM d")} – ${format(endOfISOWeek(anchorDate), "MMM d, yyyy")}`;

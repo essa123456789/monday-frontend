@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArchiveRestore, ArrowLeft, Loader2, PackageOpen, Search, Trash2 } from "lucide-react";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatRelativeTime, STATUS_META } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useBoardStore } from "@/store/boardStore";
-import { StatusPill } from "@/components/ui/Badges";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import type { TaskCard } from "@/lib/types";
 
@@ -144,7 +143,16 @@ export function ArchivedTasksView({ boardId }: { boardId: number }) {
                     {task.group_title} · archived {formatRelativeTime(task.archived_at)}
                   </p>
                 </div>
-                <StatusPill status={task.status} />
+                {/* Status chip drawn exactly like the board's status cell. */}
+                <span
+                  className="inline-flex h-[32px] min-w-[96px] max-w-full shrink-0 items-center justify-center truncate rounded-full px-4 text-[12px] font-semibold"
+                  style={{
+                    backgroundColor: `${STATUS_META[task.status].tint}22`,
+                    color: STATUS_META[task.status].tint,
+                  }}
+                >
+                  {STATUS_META[task.status].label}
+                </span>
                 <button
                   type="button"
                   onClick={() => restore(task)}

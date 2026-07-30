@@ -45,11 +45,17 @@ const config: Config = {
           from: { opacity: "0", transform: "scale(0.96)" },
           to: { opacity: "1", transform: "scale(1)" },
         },
+        // Celebration video exit — ported from baboons-dashboard.
+        slideOutLeft: {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(-100%)" },
+        },
       },
       animation: {
         "slide-in-right": "slide-in-right 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
         "fade-in": "fade-in 0.2s ease-out",
         "pop-in": "pop-in 0.15s ease-out",
+        "slide-out-left": "slideOutLeft 1s ease-in",
       },
     },
   },

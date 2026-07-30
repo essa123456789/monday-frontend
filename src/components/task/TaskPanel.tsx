@@ -28,6 +28,7 @@ import {
   Download,
   ExternalLink,
   File,
+  ImagePlus,
   Link2,
   ListTree,
   Loader2,
@@ -458,6 +459,34 @@ function UpdatesTab({task}: {task: TaskDetail}) {
   // Members the user explicitly picked from the @-menu, so we can send their
   // ids (the server prefers `mention_ids` over fuzzy @name matching).
   const [mentioned, setMentioned] = useState<Member[]>([]);
+  // An image dragged, pasted or picked into the composer, sent with the update.
+  const [image, setImage] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const imageInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!image) {
+      setImageUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(image);
+    setImageUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [image]);
+
+  const acceptImage = (file: File | null | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Only images can be added to an update.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Image must be under 10MB.');
+      return;
+    }
+    setImage(file);
+  };
 
   // @mention autocomplete on the trailing "@word"
   const mentionMatch = /(?:^|\s)@(\w*)$/.exec(text);
@@ -484,15 +513,16 @@ function UpdatesTab({task}: {task: TaskDetail}) {
 
   const submit = async () => {
     const t = text.trim();
-    if (!t || sending) return;
+    if ((!t && !image) || sending) return;
     // Only keep picks whose @firstname token still survives in the text.
     const mentionIds = mentioned
       .filter((m) => new RegExp(`@${m.name.split(' ')[0]}\\b`, 'i').test(t))
       .map((m) => m.id);
     setSending(true);
-    await addComment(t, mentionIds);
+    await addComment(t, mentionIds, image);
     setText('');
     setMentioned([]);
+    setImage(null);
     setSending(false);
   };
 
@@ -500,7 +530,20 @@ function UpdatesTab({task}: {task: TaskDetail}) {
     <div>
       <div className="flex items-start gap-2.5">
         {currentMember && <Avatar member={currentMember} size={30} />}
-        <div className="relative flex-1">
+        <div
+          className="relative flex-1"
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes('Files')) {
+              e.preventDefault();
+              setDragOver(true);
+            }
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            acceptImage(e.dataTransfer.files?.[0]);
+          }}>
           {suggestions.length > 0 && (
             <div className="absolute bottom-full left-0 z-10 mb-1 w-56 animate-pop-in rounded-lg border border-edge bg-surface-raised p-1 shadow-pop">
               <p className="px-2 pb-0.5 pt-1 text-[10.5px] font-semibold uppercase tracking-wider text-ink-faint">
@@ -523,6 +566,15 @@ function UpdatesTab({task}: {task: TaskDetail}) {
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onPaste={(e) => {
+              const file = Array.from(e.clipboardData.files).find((f) =>
+                f.type.startsWith('image/')
+              );
+              if (file) {
+                e.preventDefault();
+                acceptImage(file);
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Tab' && suggestions.length > 0) {
                 e.preventDefault();
@@ -536,17 +588,64 @@ function UpdatesTab({task}: {task: TaskDetail}) {
               }
             }}
             rows={2}
-            placeholder="Write an updateâ€¦ use @name to mention (Enter to send)"
-            className="w-full resize-none rounded-lg border border-edge bg-surface-sunken p-2.5 pr-10 text-[13px] text-ink outline-none transition-colors duration-150 placeholder:text-ink-faint focus:border-primary focus:bg-surface-raised"
+            placeholder="Write an update, @name to mention, drag or paste an image (Enter to send)"
+            className={cn(
+              'w-full resize-none rounded-lg border bg-surface-sunken p-2.5 pr-16 text-[13px] text-ink outline-none transition-colors duration-150 placeholder:text-ink-faint focus:bg-surface-raised',
+              dragOver
+                ? 'border-primary bg-primary-soft dark:bg-primary/10'
+                : 'border-edge focus:border-primary'
+            )}
           />
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!text.trim() || sending}
-            aria-label="Send update"
-            className="absolute bottom-2.5 right-2 cursor-pointer rounded-md p-1.5 text-primary transition-colors duration-150 hover:bg-primary-soft disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-primary/15">
-            <Send size={15} />
-          </button>
+          {/* Pending image preview */}
+          {imageUrl && (
+            <div className="mt-1.5 inline-flex items-start gap-1.5 rounded-lg border border-edge bg-surface-raised p-1.5">
+              {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
+              <img
+                src={imageUrl}
+                alt="Attachment preview"
+                className="max-h-28 rounded object-contain"
+              />
+              <button
+                type="button"
+                onClick={() => setImage(null)}
+                aria-label="Remove image"
+                className="cursor-pointer rounded-md p-0.5 text-ink-faint transition-colors duration-150 hover:bg-surface-sunken hover:text-[#E2445C]">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+          <div className="absolute bottom-2.5 right-2 flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => imageInput.current?.click()}
+              aria-label="Add image"
+              title="Add image"
+              className="cursor-pointer rounded-md p-1.5 text-ink-faint transition-colors duration-150 hover:bg-surface-sunken hover:text-ink">
+              <ImagePlus size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={(!text.trim() && !image) || sending}
+              aria-label="Send update"
+              className="cursor-pointer rounded-md p-1.5 text-primary transition-colors duration-150 hover:bg-primary-soft disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-primary/15">
+              {sending ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Send size={15} />
+              )}
+            </button>
+          </div>
+          <input
+            ref={imageInput}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              acceptImage(e.target.files?.[0]);
+              if (imageInput.current) imageInput.current.value = '';
+            }}
+          />
         </div>
       </div>
 
@@ -577,9 +676,25 @@ function UpdatesTab({task}: {task: TaskDetail}) {
                   </button>
                 </span>
               </div>
-              <p className="mt-0.5 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">
-                {c.text}
-              </p>
+              {c.text && (
+                <p className="mt-0.5 whitespace-pre-wrap text-[13px] leading-relaxed text-ink">
+                  {c.text}
+                </p>
+              )}
+              {c.image && (
+                // eslint-disable-next-line @next/next/no-img-element -- image is served from the API host
+                <a
+                  href={c.image}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1.5 block">
+                  <img
+                    src={c.image}
+                    alt="Update attachment"
+                    className="max-h-64 max-w-full rounded-lg border border-edge object-contain"
+                  />
+                </a>
+              )}
             </div>
           </li>
         ))}

@@ -8,8 +8,25 @@ export const clientId =
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2);
 
+/** Payload for the Overview celebration when a task hits Done / In Review. */
+export interface StatusCelebration {
+  id: number;
+  previous_status: string;
+  new_status: string;
+  task_name: string;
+  board_name: string;
+  user_name: string;
+  user_image?: string | null;
+  timestamp?: string;
+}
+
 export interface RealtimeEvent {
-  event: "task_changed" | "board_changed" | "notification" | "membership_changed";
+  event:
+    | "task_changed"
+    | "board_changed"
+    | "notification"
+    | "membership_changed"
+    | "status_celebration";
   board?: number;
   origin?: string | null;
   /** task_changed: the single card to patch in place. */
@@ -20,6 +37,8 @@ export interface RealtimeEvent {
   workspace?: number;
   role?: string;
   removed?: boolean;
+  /** status_celebration: who/what/old→new status for the celebration. */
+  celebration?: StatusCelebration;
 }
 
 /** Socket close code the server uses when the access JWT is invalid/expired. */

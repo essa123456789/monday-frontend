@@ -119,12 +119,17 @@ export function WorkspaceBoardList() {
   const [deleteFolderTarget, setDeleteFolderTarget] = useState<Folder | null>(null);
 
   const ws = workspaces[0];
-  // Personal subfolders (only ever the current user's own — the server never
-  // sends anyone else's) live in their own section below the workspace tree.
+  // Personal subfolders live in their own section below the workspace tree.
+  // These are my own folders plus any owned by someone else that holds a board
+  // I'm on (the server sends those so a shared board shows under its folder).
   const folders = (ws?.folders ?? []).filter((f) => f.owner == null);
   const personalFolders = (ws?.folders ?? [])
     .filter((f) => f.owner != null)
     .sort((a, b) => a.order - b.order || a.id - b.id);
+  // A personal folder I own — I can add boards, rename, delete and reorder it.
+  // Someone else's folder (shown because I'm on a board inside) is read-only.
+  const ownsFolder = (folder: Folder) =>
+    currentMember != null && folder.owner === currentMember.id;
   const looseBoards =
     ws?.boards.filter((b) => b.folder == null && !b.is_personal) ?? [];
   // Every personal board I can see (owner or member) lives in this section.
@@ -587,6 +592,7 @@ export function WorkspaceBoardList() {
               {personalFolders.map((folder) => {
                 const open = !closedFolders.has(folder.id);
                 const folderBoards = boardsInFolder(folder.id);
+                const owns = ownsFolder(folder);
                 return (
                   <SortableFolderLi
                     key={`pfolder-${folder.id}`}
@@ -594,7 +600,7 @@ export function WorkspaceBoardList() {
                     {(drag) => (
                       <>
                         <div
-                          {...drag}
+                          {...(owns ? drag : {})}
                           role="button"
                           tabIndex={0}
                           onClick={() => toggleFolder(folder.id)}
@@ -631,47 +637,51 @@ export function WorkspaceBoardList() {
                   ) : (
                     <span className="flex-1 truncate">{folder.name}</span>
                   )}
-                  <span onClick={(e) => e.stopPropagation()}>
-                    <Dropdown
-                      align="right"
-                      width={170}
-                      trigger={
-                        <button
-                          type="button"
-                          aria-label={`Folder options for ${folder.name}`}
-                          className="cursor-pointer rounded-md p-0.5 text-ink-faint opacity-0 transition-all duration-150 hover:bg-edge hover:text-ink group-hover:opacity-100">
-                          <MoreHorizontal size={15} />
-                        </button>
-                      }>
-                      {(close) => (
-                        <>
-                          <DropdownItem
-                            onClick={() => {
-                              setCreatePersonalInFolder(folder.id);
-                              close();
-                            }}>
-                            <Plus size={14} /> Add board
-                          </DropdownItem>
-                          <DropdownItem
-                            onClick={() => {
-                              setRenamingFolder(folder);
-                              setFolderDraft(folder.name);
-                              close();
-                            }}>
-                            <Pencil size={14} /> Rename
-                          </DropdownItem>
-                          <DropdownItem
-                            danger
-                            onClick={() => {
-                              setDeleteFolderTarget(folder);
-                              close();
-                            }}>
-                            <Trash2 size={14} /> Delete
-                          </DropdownItem>
-                        </>
-                      )}
-                    </Dropdown>
-                  </span>
+                  {/* Managing the folder (add/rename/delete) is owner-only — a
+                      folder shown because I'm on a board inside is read-only. */}
+                  {owns && (
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <Dropdown
+                        align="right"
+                        width={170}
+                        trigger={
+                          <button
+                            type="button"
+                            aria-label={`Folder options for ${folder.name}`}
+                            className="cursor-pointer rounded-md p-0.5 text-ink-faint opacity-0 transition-all duration-150 hover:bg-edge hover:text-ink group-hover:opacity-100">
+                            <MoreHorizontal size={15} />
+                          </button>
+                        }>
+                        {(close) => (
+                          <>
+                            <DropdownItem
+                              onClick={() => {
+                                setCreatePersonalInFolder(folder.id);
+                                close();
+                              }}>
+                              <Plus size={14} /> Add board
+                            </DropdownItem>
+                            <DropdownItem
+                              onClick={() => {
+                                setRenamingFolder(folder);
+                                setFolderDraft(folder.name);
+                                close();
+                              }}>
+                              <Pencil size={14} /> Rename
+                            </DropdownItem>
+                            <DropdownItem
+                              danger
+                              onClick={() => {
+                                setDeleteFolderTarget(folder);
+                                close();
+                              }}>
+                              <Trash2 size={14} /> Delete
+                            </DropdownItem>
+                          </>
+                        )}
+                      </Dropdown>
+                    </span>
+                  )}
                 </div>
                 {open && folderBoards.length > 0 && (
                   <DndContext
