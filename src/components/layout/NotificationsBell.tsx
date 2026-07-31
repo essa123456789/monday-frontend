@@ -1,6 +1,7 @@
 "use client";
 
-import { AtSign, Bell, CheckCheck, LayoutGrid, MessageCircle, Palmtree, UserPlus } from "lucide-react";
+import { AtSign, Bell, CheckCheck, LayoutGrid, MessageCircle, Palmtree, UserPlus, Video } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useBoardStore } from "@/store/boardStore";
 import { useNotificationStore, type AppNotification } from "@/store/notificationStore";
 import { Avatar } from "@/components/ui/Avatar";
@@ -13,13 +14,15 @@ const KIND_ICON = {
   mention: <AtSign size={12} />,
   leave: <Palmtree size={12} />,
   board: <LayoutGrid size={12} />,
+  meeting: <Video size={12} />,
 } as const;
 
-const KIND_COLOR = { assign: "#579BFC", comment: "#9D99FF", mention: "#FDBC64", leave: "#14B8A6", board: "#6C6CFF" } as const;
+const KIND_COLOR = { assign: "#579BFC", comment: "#9D99FF", mention: "#FDBC64", leave: "#14B8A6", board: "#6C6CFF", meeting: "#6C6CFF" } as const;
 
 function NotificationRow({ n, close }: { n: AppNotification; close: () => void }) {
   const markRead = useNotificationStore((s) => s.markRead);
   const openTask = useBoardStore((s) => s.openTask);
+  const router = useRouter();
 
   return (
     <button
@@ -28,6 +31,10 @@ function NotificationRow({ n, close }: { n: AppNotification; close: () => void }
         markRead(n.id);
         if (n.task) {
           openTask(n.task);
+          close();
+        } else if (n.meeting) {
+          // Meetings live on the calendar, where the Join button is.
+          router.push("/calendar");
           close();
         }
       }}

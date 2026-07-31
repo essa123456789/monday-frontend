@@ -4,13 +4,15 @@ import type { Member } from "@/lib/types";
 
 export interface AppNotification {
   id: number;
-  kind: "assign" | "comment" | "mention" | "leave" | "board";
+  kind: "assign" | "comment" | "mention" | "leave" | "board" | "meeting";
   text: string;
   read: boolean;
   actor_detail: Member | null;
   task: number | null;
   task_title: string | null;
   board: number | null;
+  /** Set only for meeting invites, which belong to no task or board. */
+  meeting: number | null;
   created_at: string;
 }
 

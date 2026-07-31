@@ -29,7 +29,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Dropdown, DropdownItem } from "@/components/ui/Dropdown";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { cn, copyText, formatRelativeTime } from "@/lib/utils";
 import { applyThemeColor, DEFAULT_THEME_COLOR } from "@/lib/theme";
 import type { Invite, Membership } from "@/lib/types";
 
@@ -326,13 +326,13 @@ export default function TeamPage() {
   if (!authed || !currentMember || currentMember.role !== "admin") return null;
 
   const copy = async (invite: Invite, message = "Invite link copied") => {
-    try {
-      await navigator.clipboard.writeText(inviteLink(invite.token));
+    const link = inviteLink(invite.token);
+    if (await copyText(link)) {
       setCopiedId(invite.id);
       setTimeout(() => setCopiedId(null), 1500);
       toast.success(message);
-    } catch {
-      toast.error("Could not copy — copy it manually: " + inviteLink(invite.token));
+    } else {
+      toast.error("Could not copy — copy it manually: " + link);
     }
   };
 

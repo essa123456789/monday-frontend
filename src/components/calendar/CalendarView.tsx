@@ -9,6 +9,8 @@ import {
   ChevronRight,
   Clock,
   Palmtree,
+  Plus,
+  Video,
 } from "lucide-react";
 import {
   addDays,
@@ -31,16 +33,20 @@ import { cn, PRIORITY_META, STATUS_META } from "@/lib/utils";
 import { Avatar } from "@/components/ui/Avatar";
 import { StatusPill } from "@/components/ui/Badges";
 import { LEAVE_ACCENT, LEAVE_META, leaveRangeText } from "@/components/leave/LeavesView";
+import { MeetingModal } from "@/components/meetings/MeetingModal";
+import { MeetingRow } from "@/components/meetings/MeetingRow";
 import type {
   BoardDetail,
   BoardListItem,
   LeaveRequest,
+  Meeting,
   Member,
   TaskPriority,
   TaskStatus,
 } from "@/lib/types";
 
 const BIRTHDAY_COLOR = "#FF7AB3";
+const MEETING_COLOR = "#6C6CFF";
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 /** A due task flattened out of its board for calendar display. */
@@ -73,6 +79,7 @@ function MonthCard({
   tasksByDay,
   birthdaysByMonthDay,
   leavesByDay,
+  meetingsByDay,
 }: {
   month: Date;
   selected: Date;
@@ -80,6 +87,7 @@ function MonthCard({
   tasksByDay: Map<string, CalendarTask[]>;
   birthdaysByMonthDay: Map<string, Member[]>;
   leavesByDay: Map<string, LeaveRequest[]>;
+  meetingsByDay: Map<string, Meeting[]>;
 }) {
   const days = eachDayOfInterval({
     start: startOfWeek(startOfMonth(month), { weekStartsOn: 1 }),
@@ -106,7 +114,12 @@ function MonthCard({
           const dayTasks = inMonth ? tasksByDay.get(key) ?? [] : [];
           const dayBirthdays = inMonth ? birthdaysByMonthDay.get(key.slice(5)) ?? [] : [];
           const dayLeaves = inMonth ? leavesByDay.get(key) ?? [] : [];
-          const hasEvents = dayTasks.length > 0 || dayBirthdays.length > 0 || dayLeaves.length > 0;
+          const dayMeetings = inMonth ? meetingsByDay.get(key) ?? [] : [];
+          const hasEvents =
+            dayTasks.length > 0 ||
+            dayBirthdays.length > 0 ||
+            dayLeaves.length > 0 ||
+            dayMeetings.length > 0;
           const today = isToday(day);
           const isSelected = inMonth && isSameDay(day, selected);
           // One dot per status present that day keeps busy days readable.
@@ -122,7 +135,9 @@ function MonthCard({
                 hasEvents
                   ? ` — ${dayTasks.length} task${dayTasks.length === 1 ? "" : "s"} due${
                       dayBirthdays.length ? `, ${dayBirthdays.length} birthday${dayBirthdays.length === 1 ? "" : "s"}` : ""
-                    }${dayLeaves.length ? `, ${dayLeaves.length} on leave` : ""}`
+                    }${dayLeaves.length ? `, ${dayLeaves.length} on leave` : ""}${
+                      dayMeetings.length ? `, ${dayMeetings.length} meeting${dayMeetings.length === 1 ? "" : "s"}` : ""
+                    }`
                   : ""
               }`}
               aria-pressed={isSelected}
@@ -166,6 +181,9 @@ function MonthCard({
                   {dayLeaves.length > 0 && (
                     <Palmtree size={9} strokeWidth={2.75} style={{ color: LEAVE_ACCENT }} />
                   )}
+                  {dayMeetings.length > 0 && (
+                    <Video size={9} strokeWidth={2.75} style={{ color: MEETING_COLOR }} />
+                  )}
                 </span>
               )}
             </button>
@@ -183,11 +201,17 @@ function DayDetails({
   tasks,
   birthdays,
   leaves,
+  meetings,
+  currentMemberId,
+  onMeetingCancelled,
 }: {
   selected: Date;
   tasks: CalendarTask[];
   birthdays: Member[];
   leaves: LeaveRequest[];
+  meetings: Meeting[];
+  currentMemberId: number | undefined;
+  onMeetingCancelled: (id: number) => void;
 }) {
   const openTask = useBoardStore((s) => s.openTask);
   const overdue = (t: CalendarTask) =>
@@ -209,6 +233,8 @@ function DayDetails({
             {birthdays.length > 0 &&
               ` · ${birthdays.length} birthday${birthdays.length === 1 ? "" : "s"}`}
             {leaves.length > 0 && ` · ${leaves.length} on leave`}
+            {meetings.length > 0 &&
+              ` · ${meetings.length} meeting${meetings.length === 1 ? "" : "s"}`}
           </p>
         </div>
         {isToday(selected) && (
@@ -219,6 +245,26 @@ function DayDetails({
       </div>
 
       <div className="nice-scroll min-h-0 flex-1 space-y-4 overflow-y-auto pt-3">
+        {meetings.length > 0 && (
+          <div>
+            <h3 className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-wider text-ink-faint">
+              <Video size={11} style={{ color: MEETING_COLOR }} /> Meetings
+            </h3>
+            <div className="space-y-1.5">
+              {[...meetings]
+                .sort((a, b) => a.start_at.localeCompare(b.start_at))
+                .map((m) => (
+                  <MeetingRow
+                    key={m.id}
+                    meeting={m}
+                    currentMemberId={currentMemberId}
+                    onCancelled={onMeetingCancelled}
+                  />
+                ))}
+            </div>
+          </div>
+        )}
+
         {birthdays.length > 0 && (
           <div>
             <h3 className="flex items-center gap-1.5 pb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
@@ -355,15 +401,19 @@ export function CalendarView() {
   const [tasks, setTasks] = useState<CalendarTask[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [meetingModal, setMeetingModal] = useState(false);
+  const currentMember = useBoardStore((s) => s.currentMember);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [boards, memberList, leaveList] = await Promise.all([
+        const [boards, memberList, leaveList, meetingList] = await Promise.all([
           api.get<BoardListItem[]>("/boards/"),
           api.get<Member[]>("/members/"),
           api.get<LeaveRequest[]>("/leaves/"),
+          api.get<Meeting[]>("/meetings/"),
         ]);
         const details = await Promise.all(
           boards.map((b) => api.get<BoardDetail>(`/boards/${b.id}/`))
@@ -405,6 +455,7 @@ export function CalendarView() {
           setTasks(collected);
           setMembers(memberList);
           setLeaves(leaveList.filter((l) => l.status === "approved"));
+          setMeetings(meetingList);
           setLoading(false);
         }
       } catch {
@@ -455,10 +506,24 @@ export function CalendarView() {
     return map;
   }, [leaves]);
 
+  const meetingsByDay = useMemo(() => {
+    const map = new Map<string, Meeting[]>();
+    for (const m of meetings) {
+      // Keyed on local time so a meeting shows on the day the viewer sees it,
+      // not the UTC day it happens to fall on.
+      const key = dayKey(parseISO(m.start_at));
+      const list = map.get(key);
+      if (list) list.push(m);
+      else map.set(key, [m]);
+    }
+    return map;
+  }, [meetings]);
+
   const months = [baseMonth, addMonths(baseMonth, 1)];
   const selectedTasks = tasksByDay.get(dayKey(selected)) ?? [];
   const selectedBirthdays = birthdaysByMonthDay.get(format(selected, "MM-dd")) ?? [];
   const selectedLeaves = leavesByDay.get(dayKey(selected)) ?? [];
+  const selectedMeetings = meetingsByDay.get(dayKey(selected)) ?? [];
 
   const goToday = () => {
     const now = new Date();
@@ -498,7 +563,18 @@ export function CalendarView() {
               <span className="flex items-center gap-1.5">
                 <Palmtree size={11} style={{ color: LEAVE_ACCENT }} /> On leave
               </span>
+              <span className="flex items-center gap-1.5">
+                <Video size={11} style={{ color: MEETING_COLOR }} /> Meeting
+              </span>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setMeetingModal(true)}
+              className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-3 text-[12.5px] font-semibold text-white transition-colors duration-150 hover:bg-primary-hover"
+            >
+              <Plus size={13} /> Meeting
+            </button>
 
             <div className="flex items-center gap-1">
               <button
@@ -540,6 +616,7 @@ export function CalendarView() {
                 tasksByDay={tasksByDay}
                 birthdaysByMonthDay={birthdaysByMonthDay}
                 leavesByDay={leavesByDay}
+                meetingsByDay={meetingsByDay}
               />
             ))}
           </div>
@@ -548,9 +625,25 @@ export function CalendarView() {
             tasks={selectedTasks}
             birthdays={selectedBirthdays}
             leaves={selectedLeaves}
+            meetings={selectedMeetings}
+            currentMemberId={currentMember?.id}
+            onMeetingCancelled={(id) =>
+              setMeetings((list) => list.filter((m) => m.id !== id))
+            }
           />
         </div>
       </div>
+
+      {meetingModal && (
+        <MeetingModal
+          members={members}
+          currentMemberId={currentMember?.id}
+          googleConnected={Boolean(currentMember?.google_connected)}
+          defaultDate={selected}
+          onClose={() => setMeetingModal(false)}
+          onCreated={(meeting) => setMeetings((list) => [...list, meeting])}
+        />
+      )}
     </main>
   );
 }

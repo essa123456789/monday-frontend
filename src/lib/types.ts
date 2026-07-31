@@ -23,6 +23,12 @@ export interface Member {
   board_order?: Record<string, number[]>;
   /** Whether this member has linked their own Slack account (profile → Connect Slack). */
   slack_connected?: boolean;
+  /** Whether this member has linked their own Google account (profile → Connect Google).
+   * Meetings they organise only carry a Meet link when this is true. */
+  google_connected?: boolean;
+  /** The linked Google account's address, shown back to the member. Empty when
+   * not connected — the tokens themselves never leave the server. */
+  google_email?: string;
 }
 
 export interface Subitem {
@@ -85,6 +91,29 @@ export interface LeaveRequest {
   decided_at: string | null;
   decision_note: string;
   created_at: string;
+}
+
+export interface Meeting {
+  id: number;
+  workspace: number;
+  title: string;
+  description: string;
+  /** ISO datetimes. */
+  start_at: string;
+  end_at: string;
+  /** Started with "Meet now" rather than scheduled for later. */
+  instant: boolean;
+  /** Google Meet URL. Empty when the organiser hasn't connected Google — the
+   * meeting is still real, there's just nothing to join yet. */
+  meet_url: string;
+  organizer: number;
+  organizer_detail: Member;
+  attendees: number[];
+  attendee_details: Member[];
+  cancelled_at: string | null;
+  created_at: string;
+  /** Only present on the instant-meeting response, explaining a missing link. */
+  warning?: string;
 }
 
 export interface Label {

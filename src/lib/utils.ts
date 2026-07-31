@@ -135,3 +135,41 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/**
+ * Copy text to the clipboard, falling back to a hidden textarea.
+ *
+ * navigator.clipboard only exists in a secure context — HTTPS or localhost —
+ * so on a plain-HTTP deployment it is undefined and every copy silently fails.
+ * execCommand("copy") is deprecated but still works there, and is the only
+ * option until the site is served over TLS.
+ */
+export async function copyText(text: string): Promise<boolean> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Permission denied or insecure context — fall through.
+    }
+  }
+
+  if (typeof document === "undefined") return false;
+  const area = document.createElement("textarea");
+  area.value = text;
+  // Keep it off-screen and unfocusable-looking, but still selectable.
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.top = "-1000px";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  try {
+    area.select();
+    area.setSelectionRange(0, text.length);
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(area);
+  }
+}

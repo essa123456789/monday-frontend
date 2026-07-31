@@ -35,12 +35,24 @@ export function AnimatedNotification({
   return (
     <div className="flex h-auto w-[1230px] flex-col items-center justify-between rounded-[30px] bg-[#2B303B] p-[54px]">
       <div className="flex w-full items-start gap-[24px]">
-        {/* eslint-disable-next-line @next/next/no-img-element -- avatar from the API host */}
-        <img
-          src={userImage || "https://picsum.photos/200"}
-          alt={userName}
-          style={{ height: 108, width: 108, borderRadius: "100%", border: "3px solid #4FF7A8" }}
-        />
+        {userImage ? (
+          /* eslint-disable-next-line @next/next/no-img-element -- avatar from the API host */
+          <img
+            src={userImage}
+            alt={userName}
+            style={{ height: 108, width: 108, borderRadius: "100%", border: "3px solid #4FF7A8" }}
+          />
+        ) : (
+          /* Initials rather than a remote placeholder: nothing here reaches
+             outside the deployment. */
+          <div
+            aria-label={userName}
+            className="flex items-center justify-center bg-[#4C5162] text-[42px] font-semibold text-white"
+            style={{ height: 108, width: 108, borderRadius: "100%", border: "3px solid #4FF7A8" }}
+          >
+            {userName.trim().charAt(0).toUpperCase() || "?"}
+          </div>
+        )}
 
         <div className="flex h-full w-full flex-col">
           <p className="text-[42px] text-[#FFFFFF]">

@@ -2,7 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Check, KeyRound, Loader2, LogOut, Slack, Trash2, User as UserIcon } from "lucide-react";
+import {
+  Camera,
+  Check,
+  KeyRound,
+  Loader2,
+  LogOut,
+  Slack,
+  Trash2,
+  User as UserIcon,
+  Video,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { clearSession, getSession, logout, saveSession, updateSessionMember } from "@/lib/auth";
@@ -94,6 +104,7 @@ export default function ProfilePage() {
   const [deleting, setDeleting] = useState(false);
 
   const [slackBusy, setSlackBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
 
   useEffect(() => {
     if (!getSession()) {
@@ -134,6 +145,34 @@ export default function ProfilePage() {
     };
     (messages[result] ?? (() => {}))();
     // Refresh the profile so the connected state reflects the change.
+    api
+      .get<Member>("/auth/me/")
+      .then((m) => {
+        setCurrentMember(m);
+        updateSessionMember(m);
+      })
+      .catch(() => {});
+    router.replace("/profile");
+  }, [router, setCurrentMember]);
+
+  // Handle the return trip from the "Connect Google" flow.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const result = new URLSearchParams(window.location.search).get("google");
+    if (!result) return;
+    const messages: Record<string, () => void> = {
+      connected: () => toast.success("Google connected — your meetings now get a Meet link"),
+      missing_calendar_scope: () =>
+        toast.error(
+          "Connected, but without calendar permission — meetings won't get a Meet link. Disconnect and try again, allowing calendar access.",
+          { duration: 10000 }
+        ),
+      denied: () => toast.error("Google connection was cancelled"),
+      no_refresh_token: () =>
+        toast.error("Google didn't return a refresh token — remove the app at myaccount.google.com and try again"),
+      error: () => toast.error("Google connection failed — please try again"),
+    };
+    (messages[result] ?? (() => {}))();
     api
       .get<Member>("/auth/me/")
       .then((m) => {
@@ -242,6 +281,31 @@ export default function ProfilePage() {
       setSlackBusy(false);
       toast.error("Couldn't start the Slack connection");
     }
+  };
+
+  const connectGoogle = async () => {
+    setGoogleBusy(true);
+    try {
+      const { url } = await api.get<{ url: string }>(
+        `/google/oauth/url/?return_to=${encodeURIComponent("/profile")}`
+      );
+      window.location.href = url;
+    } catch {
+      setGoogleBusy(false);
+      toast.error("Couldn't start the Google connection — is it configured on the server?");
+    }
+  };
+
+  const disconnectGoogle = async () => {
+    setGoogleBusy(true);
+    try {
+      await api.delete("/google/");
+      applyMember({ ...currentMember, google_connected: false, google_email: "" });
+      toast.success("Google disconnected");
+    } catch {
+      toast.error("Couldn't disconnect Google");
+    }
+    setGoogleBusy(false);
   };
 
   const disconnectSlack = async () => {
@@ -506,6 +570,47 @@ export default function ProfilePage() {
               <p className="mt-2 text-[11.5px] text-ink-faint">
                 We only read your Slack identity to match it with your account email — you can only
                 connect the Slack account that shares your email. Disconnect anytime.
+              </p>
+            </section>
+
+            {/* Google Meet */}
+            <section className="rounded-2xl border border-edge bg-surface-raised p-5 shadow-card">
+              <h2 className="flex items-center gap-2 text-[15px] font-semibold text-ink">
+                <Video size={16} className="text-ink-faint" /> Google Meet
+              </h2>
+              <p className="mt-0.5 text-[12.5px] text-ink-muted">
+                Connect Google so the meetings you start get a real Meet link, and everyone you
+                invite receives the calendar invite.
+              </p>
+              {currentMember.google_connected ? (
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1 text-[12.5px] font-medium text-emerald-600 dark:text-emerald-400">
+                    <Check size={13} /> {currentMember.google_email || "Connected"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={disconnectGoogle}
+                    disabled={googleBusy}
+                    className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-edge px-3 text-[12.5px] font-medium text-ink-muted transition-colors duration-150 hover:bg-surface-sunken hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {googleBusy && <Loader2 size={13} className="animate-spin" />}
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={connectGoogle}
+                  disabled={googleBusy}
+                  className="mt-3 flex h-10 cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 text-[13px] font-semibold text-white transition-colors duration-150 hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {googleBusy ? <Loader2 size={14} className="animate-spin" /> : <Video size={15} />}
+                  Connect Google
+                </button>
+              )}
+              <p className="mt-2 text-[11.5px] text-ink-faint">
+                We ask only for permission to create calendar events — enough to issue a Meet link
+                and invite people. We never read your existing calendar. Disconnect anytime.
               </p>
             </section>
 

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useBoardStore } from "@/store/boardStore";
 import { Dropdown } from "@/components/ui/Dropdown";
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { cn, copyText, formatRelativeTime } from "@/lib/utils";
 import type { Invite } from "@/lib/types";
 
 function inviteLink(token: string): string {
@@ -32,13 +32,13 @@ export function InviteButton() {
   };
 
   const copy = async (invite: Invite, message = "Invite link copied") => {
-    try {
-      await navigator.clipboard.writeText(inviteLink(invite.token));
+    const link = inviteLink(invite.token);
+    if (await copyText(link)) {
       setCopiedId(invite.id);
       setTimeout(() => setCopiedId(null), 1500);
       toast.success(message);
-    } catch {
-      toast.error("Could not copy — copy it manually: " + inviteLink(invite.token));
+    } else {
+      toast.error("Could not copy — copy it manually: " + link);
     }
   };
 
